@@ -36,7 +36,7 @@ runs:
       if: ${{ inputs.pre_command != '' }}
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}
@@ -50,7 +50,7 @@ runs:
         echo "path=${DIRECTORY}" >> $GITHUB_OUTPUT
 
     - name: Download artifact (for verification)
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.name }}
         path: ${{ steps.tmp-dir.outputs.path }}
