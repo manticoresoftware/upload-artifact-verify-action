@@ -2,105 +2,85 @@
 name: test
 on:
   pull_request:
+  push:
+    branches:
+      - master
 
 jobs:
-  test-normal:
-    name: test-normal
-    runs-on: ubuntu-latest
+  smoke-test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@v5
 
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Create artifact
-        id: file
+      - name: Create sample file
         shell: bash
-        run: |
-          PRE_RAND="$( ${RAND} | md5sum | head -c 20;  )"
-          PRE_DATE="$( date '+%s' )"
-          NAME="${PRE_RAND}-${PRE_DATE}.txt"
-          echo "somedata" > "${NAME}"
-          echo "::set-output name=path::${NAME}"
+        run: echo payload > sample.txt
 
-      - name: upload artifact
+      - name: Upload and verify
+        id: basic
         uses: ./
         with:
-          name: ${{ steps.file.outputs.path }}
-          path: ${{ steps.file.outputs.path }}
+          name: sample-${{ runner.os }}-${{ github.run_attempt }}
+          path: sample.txt
 
-
-  test-pre-post-command:
-    name: test-pre-post-command
-    runs-on: ubuntu-latest
-    steps:
-
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Download by returned ID
+        uses: actions/download-artifact@v7
         with:
-          fetch-depth: 0
+          artifact-ids: ${{ steps.basic.outputs.artifact-id }}
+          path: downloaded
 
-      - name: Create artifact
-        id: file
+      - name: Check downloaded data
         shell: bash
-        run: |
-          PRE_RAND="$( ${RAND} | md5sum | head -c 20;  )"
-          PRE_DATE="$( date '+%s' )"
-          NAME="${PRE_RAND}-${PRE_DATE}.txt"
-          echo "somedata" > "${NAME}"
-          echo "::set-output name=path::${NAME}"
+        run: cmp sample.txt downloaded/sample.txt
 
-      - name: upload artifact
-        id: upload
+      - name: Upload with pre and post commands
         uses: ./
         with:
-          name: ${{ steps.file.outputs.path }}
-          path: ${{ steps.file.outputs.path }}
-          post_command: |
-            ls -lap {{download_path}}
+          name: commands-${{ runner.os }}-${{ github.run_attempt }}.txt
+          path: commands-${{ runner.os }}-${{ github.run_attempt }}.txt
+          pre_command: echo payload > commands-${{ runner.os }}-${{ github.run_attempt }}.txt
+          post_command: test "$(cat "{{download_path}}")" = payload
 
-
-  test-retry:
+  retry-test:
     runs-on: ubuntu-latest
-    name: test-retry
     steps:
+      - uses: actions/checkout@v5
 
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Inject a transient download failure
+        shell: bash
+        run: |
+          mkdir -p .github/test-actions/verify
+          sed 's|uses: actions/download-artifact@v7|uses: ./.github/test-actions/flaky-download|' action.yml > .github/test-actions/verify/action.yml
+          echo payload > retry.txt
+
+      - name: Upload and verify after a transient download failure
+        id: retry
+        uses: ./.github/test-actions/verify
         with:
-          fetch-depth: 0
+          name: retry.txt
+          path: retry.txt
+          post_command: test "$(cat "{{download_path}}")" = payload
 
-      # TRY-1
-      # export docker image to file
-      # upload file
-      # download file
-      # import downloaded file into docker
-      - name: upload docker image (try-1)
-        id: upload-1
+      - name: Confirm the simulated failure occurred
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.retry.outputs.artifact-id }}
+        run: |
+          test -n "$ARTIFACT_ID"
+          test -f "$RUNNER_TEMP/artifact-check-$ARTIFACT_ID"
+
+      - name: Missing source file must still fail
+        id: missing
         uses: ./
         continue-on-error: true
         with:
-          name: php-fpm-8.1-work
-          path: php-fpm-8.1-work
-          pre_command: |
-            docker save devilbox/php-fpm:8.1-work | gzip
-          post_command: |
-            docker load -i {{download_path}}
+          name: missing
+          path: does-not-exist.txt
 
-      # TRY-2
-      # export docker image to file
-      # upload file
-      # download file
-      # import downloaded file into docker
-      - name: upload docker image (try-2)
-        id: upload-2
-        uses: ./
-        with:
-          name: some-random-file
-          path: some-random-file
-          pre_command: |
-            echo "some-contents" > some-random-file
-          post_command: |
-            cat {{download_path}}
-        if: steps.upload-1.outcome == 'failure'
+      - name: Check failure
+        if: steps.missing.outcome != 'failure'
+        shell: bash
+        run: exit 1

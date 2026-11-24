@@ -1,0 +1,28 @@
+name: Simulate delayed artifact visibility
+description: Fail the first verification attempt for an uploaded artifact
+inputs:
+  artifact-ids:
+    required: true
+    description: Artifact ID
+  path:
+    required: true
+    description: Download destination
+runs:
+  using: composite
+  steps:
+    - name: Simulate artifact not found once
+      shell: bash
+      env:
+        ARTIFACT_ID: ${{ inputs.artifact-ids }}
+      run: |
+        test -n "$ARTIFACT_ID"
+        state="$RUNNER_TEMP/artifact-check-$ARTIFACT_ID"
+        if [[ ! -f "$state" ]]; then
+          touch "$state"
+          echo "::error::Simulated artifact not found"
+          exit 1
+        fi
+    - uses: actions/download-artifact@v7
+      with:
+        artifact-ids: ${{ inputs.artifact-ids }}
+        path: ${{ inputs.path }}

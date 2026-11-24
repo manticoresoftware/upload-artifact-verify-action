@@ -23,6 +23,11 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  artifact-id:
+    description: 'The ID of the uploaded artifact.'
+    value: ${{ steps.upload.outputs.artifact-id }}
+
 runs:
   using: "composite"
   steps:
@@ -36,6 +41,7 @@ runs:
       if: ${{ inputs.pre_command != '' }}
 
     - name: Upload artifact
+      id: upload
       uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.name }}
@@ -47,20 +53,82 @@ runs:
       shell: bash
       run: |
         DIRECTORY="$( mktemp -d )"
-        echo "path=${DIRECTORY}" >> $GITHUB_OUTPUT
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          DIRECTORY="$(cygpath -m "$DIRECTORY")"
+        fi
+        echo "path=${DIRECTORY}" >> "$GITHUB_OUTPUT"
 
-    - name: Download artifact (for verification)
+    # Upload is complete. Retry only verification, never the upload.
+    - name: Download artifact for verification (attempt 1)
+      id: download1
+      uses: actions/download-artifact@v7
+      continue-on-error: true
+      with:
+        artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+        path: ${{ steps.tmp-dir.outputs.path }}
+
+    - name: Wait before download attempt 2
+      if: steps.download1.outcome == 'failure'
+      shell: bash
+      run: sleep 2
+
+    - name: Download artifact for verification (attempt 2)
+      id: download2
+      if: steps.download1.outcome == 'failure'
+      uses: actions/download-artifact@v7
+      continue-on-error: true
+      with:
+        artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+        path: ${{ steps.tmp-dir.outputs.path }}
+
+    - name: Wait before download attempt 3
+      if: steps.download2.outcome == 'failure'
+      shell: bash
+      run: sleep 5
+
+    - name: Download artifact for verification (attempt 3)
+      id: download3
+      if: steps.download2.outcome == 'failure'
+      uses: actions/download-artifact@v7
+      continue-on-error: true
+      with:
+        artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+        path: ${{ steps.tmp-dir.outputs.path }}
+
+    - name: Wait before download attempt 4
+      if: steps.download3.outcome == 'failure'
+      shell: bash
+      run: sleep 10
+
+    - name: Download artifact for verification (attempt 4)
+      id: download4
+      if: steps.download3.outcome == 'failure'
+      uses: actions/download-artifact@v7
+      continue-on-error: true
+      with:
+        artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+        path: ${{ steps.tmp-dir.outputs.path }}
+
+    - name: Wait before download attempt 5
+      if: steps.download4.outcome == 'failure'
+      shell: bash
+      run: sleep 20
+
+    - name: Download artifact for verification (attempt 5)
+      id: download5
+      if: steps.download4.outcome == 'failure'
       uses: actions/download-artifact@v7
       with:
-        name: ${{ inputs.name }}
+        artifact-ids: ${{ steps.upload.outputs.artifact-id }}
         path: ${{ steps.tmp-dir.outputs.path }}
 
     - name: set placeholder
       id: placeholder
       shell: bash
+      env:
+        COMMAND: ${{ inputs.post_command }}
+        REPLACE: ${{ steps.tmp-dir.outputs.path }}/${{ inputs.name }}
       run: |
-        COMMAND='${{ inputs.post_command }}'
-        REPLACE='${{ steps.tmp-dir.outputs.path }}/${{ inputs.name }}'
         COMMAND="${COMMAND//\{\{download_path\}\}/${REPLACE}}"
         echo "command=${COMMAND}" >> $GITHUB_OUTPUT
       if: ${{ inputs.post_command != '' }}

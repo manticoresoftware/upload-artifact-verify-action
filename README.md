@@ -5,7 +5,7 @@
 [![](https://img.shields.io/badge/github-cytopia%2Fupload--artifact--verify--action-red.svg?logo=github)](https://github.com/cytopia/upload-artifact-verify-action "github.com/cytopia/upload-artifact-verify-action")
 [![test](https://github.com/cytopia/upload-artifact-verify-action/actions/workflows/test.yml/badge.svg)](https://github.com/cytopia/upload-artifact-verify-action/actions/workflows/test.yml)
 
-This action allows you to upload an artifact. It will then download it in the background to ensure the upload was successful. You can additionally issue pre and post commands.
+This action uploads an artifact once and downloads it by its returned artifact ID to verify that it is available. If verification fails, only the download is retried, after delays of 2, 5, 10 and 20 seconds. If all attempts fail, the action fails. You can additionally issue pre and post commands.
 
 
 ## :arrow_forward: Inputs
@@ -23,7 +23,9 @@ The following inputs can be used to alter the Docker tag name determination:
 
 ## :arrow_backward: Outputs
 
-None
+| Output | Description |
+|--------|-------------|
+| `artifact-id` | ID returned by the successful upload. |
 
 
 ## :computer: Usage
